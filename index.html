@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knock Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg:#0f1117;--surface:#181c26;--surface2:#1e2436;
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);
+  --text:#e8eaf0;--muted:#7a8099;
+  --accent:#4af0a4;--accent-dim:rgba(74,240,164,0.12);
+  --c-fresh:#4a9ff0;
+  --c-noanswer:#f0c44a;
+  --c-sold:#4af0a4;
+  --c-done:#5a6080;
+  --radius:10px;--font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+.app{display:grid;grid-template-rows:52px 1fr;height:100vh}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border);z-index:100}
+.topbar-title{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--accent);letter-spacing:.04em}
+.topbar-stats{display:flex;gap:16px}
+.topbar-stat{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.topbar-stat span{color:var(--text);font-weight:500}
+.main{display:grid;grid-template-columns:300px 1fr;height:100%;overflow:hidden}
+.sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-tabs{display:flex;border-bottom:1px solid var(--border)}
+.stab{flex:1;padding:11px 4px;text-align:center;font-size:11px;font-weight:500;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;font-family:var(--mono);letter-spacing:.02em}
+.stab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.sc{flex:1;overflow-y:auto;padding:12px;display:none}
+.sc.active{display:block}
+.sc::-webkit-scrollbar{width:3px}
+.sc::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:10px;font-family:var(--mono);color:var(--muted);margin-bottom:5px;letter-spacing:.05em;text-transform:uppercase}
+.field input{width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:var(--font);outline:none;transition:border .15s}
+.field input:focus{border-color:var(--accent)}
+.btn{width:100%;padding:11px;background:var(--accent);border:none;border-radius:var(--radius);color:#0f1117;font-size:14px;font-weight:600;font-family:var(--font);cursor:pointer;transition:opacity .15s,transform .1s;margin-top:4px}
+.btn:hover{opacity:.9}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.section-lbl{font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.street-item{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:border-color .15s}
+.street-item:hover{border-color:var(--border2)}
+.street-item.done{opacity:.4}
+.street-item.focused{border-color:var(--accent)}
+.street-top{display:flex;align-items:center;justify-content:space-between}
+.street-name{font-size:13px;font-weight:500}
+.street-badge{font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px}
+.badge-active{background:var(--accent-dim);color:var(--accent)}
+.badge-done{background:rgba(90,96,128,.2);color:var(--c-done)}
+.street-meta{font-size:11px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+.street-acts{display:flex;gap:5px;margin-top:8px}
+.street-acts button{flex:1;padding:6px;font-size:11px;font-family:var(--mono);border-radius:6px;cursor:pointer;border:1px solid var(--border2);background:var(--surface);color:var(--muted);transition:all .15s}
+.done-btn:hover{color:var(--accent)!important;border-color:var(--accent)!important}
+.del-btn:hover{color:var(--c-noanswer)!important;border-color:var(--c-noanswer)!important}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;padding:10px 12px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);font-family:var(--mono)}
+.legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.door-log-item{padding:8px 0;border-bottom:1px solid var(--border)}
+.door-log-item:last-child{border-bottom:none}
+.door-log-top{display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.door-log-addr{font-size:13px;font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.door-log-price{font-size:12px;color:var(--c-sold);font-family:var(--mono)}
+.door-log-meta{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--mono);padding-left:16px}
+.team-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:8px}
+.team-top{font-size:14px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.team-rate{font-size:12px;font-family:var(--mono);color:var(--accent)}
+.team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}
+.team-num{font-size:18px;font-weight:600}
+.team-lbl{font-size:10px;color:var(--muted);font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;margin-top:2px}
+.filter-bar{display:flex;gap:6px;margin-bottom:10px}
+.filter-bar select{flex:1;padding:7px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius);color:var(--text);font-size:12px;font-family:var(--mono);outline:none}
+.filter-bar select option{background:var(--surface2)}
+.empty{text-align:center;padding:2rem 1rem;color:var(--muted);font-size:13px;font-family:var(--mono)}
+#map{width:100%;height:100%}
+.leaflet-container{background:#141820}
+.leaflet-popup-content-wrapper{border-radius:12px;padding:0;overflow:hidden;box-shadow:0 6px 28px rgba(0,0,0,.5)}
+.leaflet-popup-content{margin:0;width:220px!important}
+.leaflet-popup-tip-container{display:none}
+.hp{font-family:'DM Sans',sans-serif;padding:14px}
+.hp h3{font-size:14px;font-weight:600;margin-bottom:3px;color:#111}
+.hp-cur{font-size:11px;margin-bottom:10px;font-family:'DM Mono',monospace;font-weight:500}
+.hp-input{width:100%;padding:7px 10px;border:1px solid #e0e0e0;border-radius:7px;font-size:13px;margin-bottom:7px;font-family:'DM Sans',sans-serif;outline:none;transition:border .15s}
+.hp-input:focus{border-color:#4a9ff0}
+.hp-btns{display:flex;flex-direction:column;gap:5px}
+.hp-btn{padding:10px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;width:100%;transition:opacity .1s;letter-spacing:.01em}
+.hp-btn:active{opacity:.8}
+.hp-knocked{background:#fff3e0;color:#bf360c}
+.hp-noanswer{background:#fffde7;color:#f57f17}
+.hp-sold{background:#e8f5e9;color:#1b5e20}
+.hp-reset{background:#f5f5f5;color:#757575;font-weight:400;font-size:12px}
+@media(max-width:700px){.main{grid-template-columns:1fr;grid-template-rows:1fr 320px}.topbar-stats{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="topbar-title">// KNOCK TRACKER</div>
+    <div class="topbar-stats">
+      <div class="topbar-stat">houses <span id="ts-houses">0</span></div>
+      <div class="topbar-stat">knocked <span id="ts-knocked">0</span></div>
+      <div class="topbar-stat">sold <span id="ts-sold">0</span></div>
+      <div class="topbar-stat">revenue <span id="ts-rev">$0</span></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="sidebar">
+      <div class="sidebar-tabs">
+        <div class="stab active" onclick="switchTab('streets')">Streets</div>
+        <div class="stab" onclick="switchTab('history')">History</div>
+        <div class="stab" onclick="switchTab('team')">Team</div>
+      </div>
+
+      <div class="sc active" id="sc-streets">
+        <div class="section-lbl">Add a street</div>
+        <div class="field">
+          <label>Street name</label>
+          <input id="add-street-input" placeholder="e.g. Corydon Ave" onkeydown="if(event.key==='Enter')addStreet()"/>
+        </div>
+        <button class="btn" onclick="addStreet()" id="add-btn">Load houses onto map</button>
+        <div id="add-status" style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-top:8px;min-height:16px"></div>
+        <div style="margin-top:16px">
+          <div class="legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--c-fresh)"></div>not knocked</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--c-noanswer)"></div>no answer</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--c-sold)"></div>sold</div>
+          </div>
+          <div class="section-lbl">Streets (<span id="street-count">0</span>)</div>
+          <div id="street-list"></div>
+        </div>
+      </div>
+
+      <div class="sc" id="sc-history">
+        <div class="filter-bar">
+          <select id="hist-rep" onchange="renderHistory()"><option value="">All reps</option></select>
+          <select id="hist-status" onchange="renderHistory()">
+            <option value="">All results</option>
+            <option value="knocked">Knocked</option>
+            <option value="noanswer">No answer</option>
+            <option value="sold">Sold</option>
+          </select>
+        </div>
+        <div id="history-list"></div>
+      </div>
+
+      <div class="sc" id="sc-team">
+        <div id="team-list"></div>
+      </div>
+    </div>
+    <div id="map"></div>
+  </div>
+</div>
+
+<script>
+let streets=[], houses=[], houseMarkers={}, map;
+let activeTab='streets', focusedStreet=null;
+
+// 3 statuses only
+const SC={fresh:'#4a9ff0', knocked:'#f04a4a', noanswer:'#f0c44a', sold:'#4af0a4'};
+const SL={fresh:'Not knocked', knocked:'Knocked — no sale', noanswer:'No answer', sold:'Sold'};
+
+function save(){
+  localStorage.setItem('ww4_streets',JSON.stringify(streets));
+  localStorage.setItem('ww4_houses',JSON.stringify(houses));
+}
+function load(){
+  try{streets=JSON.parse(localStorage.getItem('ww4_streets')||'[]')}catch(e){streets=[]}
+  try{houses=JSON.parse(localStorage.getItem('ww4_houses')||'[]')}catch(e){houses=[]}
+}
+
+function initMap(){
+  map=L.map('map',{zoomControl:true}).setView([49.8951,-97.1384],13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap © CARTO',maxZoom:19
+  }).addTo(map);
+}
+
+async function addStreet(){
+  const raw=document.getElementById('add-street-input').value.trim();
+  if(!raw)return;
+  const statusEl=document.getElementById('add-status');
+  const btn=document.getElementById('add-btn');
+  btn.disabled=true; btn.textContent='Loading...';
+  statusEl.textContent='Searching for street...';
+  const query=raw.toLowerCase().includes('winnipeg')?raw:raw+', Winnipeg, MB';
+  try{
+    const geo=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
+    const gd=await geo.json();
+    if(!gd.length){statusEl.textContent='Street not found. Try a more specific name.';resetBtn();return;}
+    const bb=gd[0].boundingbox;
+    const pad=0.004;
+    const minlat=parseFloat(bb[0])-pad, maxlat=parseFloat(bb[1])+pad;
+    const minlon=parseFloat(bb[2])-pad, maxlon=parseFloat(bb[3])+pad;
+    statusEl.textContent='Fetching house addresses...';
+    const streetWord=raw.replace(/,.*$/,'').trim();
+    const oq=`[out:json][timeout:30];(node["addr:housenumber"]["addr:street"~"${streetWord}",i](${minlat},${minlon},${maxlat},${maxlon});way["addr:housenumber"]["addr:street"~"${streetWord}",i](${minlat},${minlon},${maxlat},${maxlon}););out center;`;
+    const ores=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:oq});
+    const od=await ores.json();
+    const els=od.elements||[];
+    if(!els.length){
+      statusEl.textContent=`No mapped addresses found for "${streetWord}". Try "Corydon Ave" or "Portage Ave".`;
+      resetBtn();return;
+    }
+    const streetId=Date.now();
+    streets.push({id:streetId,name:raw,done:false,addedAt:new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric'})});
+    const newH=[];
+    els.forEach(el=>{
+      const lat=el.lat||(el.center&&el.center.lat);
+      const lon=el.lon||(el.center&&el.center.lon);
+      if(!lat||!lon)return;
+      const num=el.tags?.['addr:housenumber']||'?';
+      const st=el.tags?.['addr:street']||raw;
+      newH.push({id:el.id+'_'+streetId,streetId,streetName:raw,addr:num+' '+st,num:parseInt(num)||0,lat,lng:lon,status:'fresh',rep:'',price:'',updatedAt:null});
+    });
+    newH.sort((a,b)=>a.num-b.num);
+    houses.push(...newH);
+    save();
+    newH.forEach(h=>addHouseMarker(h));
+    if(newH.length){
+      const lats=newH.map(h=>h.lat),lngs=newH.map(h=>h.lng);
+      map.fitBounds([[Math.min(...lats),Math.min(...lngs)],[Math.max(...lats),Math.max(...lngs)]],{padding:[50,50]});
+    }
+    statusEl.textContent=`✓ ${newH.length} houses loaded on ${raw}`;
+    document.getElementById('add-street-input').value='';
+    renderStreetList(); updateTopStats();
+  }catch(e){statusEl.textContent='Error loading. Check your connection.';console.error(e);}
+  resetBtn();
+}
+
+function resetBtn(){
+  const btn=document.getElementById('add-btn');
+  btn.disabled=false; btn.textContent='Load houses onto map';
+}
+
+function makeIcon(status, streetDone){
+  const color=streetDone?'#2a2f42':(SC[status]||SC.fresh);
+  const s=status==='fresh'?11:14;
+  const ring=status==='sold'?`border:2px solid rgba(74,240,164,0.6);`:`border:2px solid rgba(255,255,255,0.15);`;
+  const glow=(!streetDone&&status==='sold')?`box-shadow:0 0 8px #4af0a499;`:'';
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:${s}px;height:${s}px;background:${color};border-radius:50%;${ring}${glow}"></div>`,
+    iconSize:[s,s],iconAnchor:[s/2,s/2]
+  });
+}
+
+function addHouseMarker(house){
+  const street=streets.find(s=>s.id===house.streetId);
+  const m=L.marker([house.lat,house.lng],{icon:makeIcon(house.status,street?.done)})
+    .addTo(map)
+    .on('click',()=>openHousePopup(house.id));
+  houseMarkers[house.id]=m;
+}
+
+function refreshHouseMarker(house){
+  const m=houseMarkers[house.id];
+  if(!m)return;
+  const street=streets.find(s=>s.id===house.streetId);
+  m.setIcon(makeIcon(house.status,street?.done));
+}
+
+function openHousePopup(houseId){
+  const h=houses.find(h=>h.id===houseId);
+  if(!h)return;
+  const color=SC[h.status]||SC.fresh;
+  const html=`<div class="hp">
+    <h3>${h.addr}</h3>
+    <div class="hp-cur" style="color:${color}">● ${SL[h.status]||h.status}${h.rep?' · '+h.rep:''}${h.price?' · $'+h.price:''}</div>
+    <input class="hp-input" id="pr-${houseId}" placeholder="Your name" value="${h.rep||''}"/>
+    <input class="hp-input" id="pp-${houseId}" placeholder="Price if sold ($)" value="${h.price||''}" type="number"/>
+    <div class="hp-btns">
+      <button class="hp-btn hp-knocked" onclick="setStatus('${houseId}','knocked')">🚪 Knocked — no sale</button>
+      <button class="hp-btn hp-noanswer" onclick="setStatus('${houseId}','noanswer')">🔔 No answer</button>
+      <button class="hp-btn hp-sold" onclick="setStatus('${houseId}','sold')">💰 Sold!</button>
+      <button class="hp-btn hp-reset" onclick="setStatus('${houseId}','fresh')">↺ Reset</button>
+    </div>
+  </div>`;
+  const m=houseMarkers[houseId];
+  if(m) m.bindPopup(html,{maxWidth:240}).openPopup();
+}
+
+window.setStatus=function(houseId,status){
+  const h=houses.find(h=>h.id===houseId);
+  if(!h)return;
+  h.status=status;
+  h.rep=document.getElementById('pr-'+houseId)?.value?.trim()||h.rep;
+  h.price=document.getElementById('pp-'+houseId)?.value?.trim()||h.price;
+  h.updatedAt=new Date().toLocaleString('en-CA',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  save(); refreshHouseMarker(h);
+  renderStreetList(); renderHistory(); renderTeam(); updateTopStats();
+  map.closePopup();
+};
+
+function renderStreetList(){
+  const el=document.getElementById('street-list');
+  document.getElementById('street-count').textContent=streets.length;
+  if(!streets.length){el.innerHTML='<div class="empty">No streets yet.<br>Add one above.</div>';return;}
+  const sorted=[...streets].sort((a,b)=>a.done-b.done||b.id-a.id);
+  el.innerHTML=sorted.map(s=>{
+    const sh=houses.filter(h=>h.streetId===s.id);
+    const touched=sh.filter(h=>h.status!=='fresh').length;
+    const sold=sh.filter(h=>h.status==='sold').length;
+    const noanswer=sh.filter(h=>h.status==='noanswer').length;
+    const pct=sh.length?Math.round(touched/sh.length*100):0;
+    const focused=focusedStreet===s.id?'focused':'';
+    return`<div class="street-item ${s.done?'done':''} ${focused}" onclick="focusStreet(${s.id})">
+      <div class="street-top">
+        <div class="street-name">${s.name}</div>
+        <div class="street-badge ${s.done?'badge-done':'badge-active'}">${s.done?'done':'active'}</div>
+      </div>
+      <div class="street-meta">${sh.length} houses · ${touched} visited (${pct}%)</div>
+      <div class="street-meta" style="margin-top:2px">
+        <span style="color:var(--c-sold)">●</span> ${sold} sold &nbsp;
+        <span style="color:var(--c-noanswer)">●</span> ${noanswer} no answer
+      </div>
+      <div class="street-acts">
+        <button class="done-btn" onclick="event.stopPropagation();toggleDone(${s.id})">${s.done?'↩ reopen':'✓ mark done'}</button>
+        <button class="del-btn" onclick="event.stopPropagation();deleteStreet(${s.id})">✕ delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function focusStreet(id){
+  focusedStreet=id;
+  const sh=houses.filter(h=>h.streetId===id);
+  if(sh.length){
+    const lats=sh.map(h=>h.lat),lngs=sh.map(h=>h.lng);
+    map.fitBounds([[Math.min(...lats),Math.min(...lngs)],[Math.max(...lats),Math.max(...lngs)]],{padding:[60,60]});
+  }
+  renderStreetList();
+}
+
+function toggleDone(id){
+  const s=streets.find(s=>s.id===id);
+  if(!s)return;
+  s.done=!s.done; save();
+  houses.filter(h=>h.streetId===id).forEach(h=>refreshHouseMarker(h));
+  renderStreetList(); updateTopStats();
+}
+
+function deleteStreet(id){
+  if(!confirm('Delete this street and all its house data?'))return;
+  streets=streets.filter(s=>s.id!==id);
+  houses.filter(h=>h.streetId===id).forEach(h=>{
+    if(houseMarkers[h.id]){houseMarkers[h.id].remove();delete houseMarkers[h.id];}
+  });
+  houses=houses.filter(h=>h.streetId!==id);
+  save(); renderStreetList(); updateTopStats();
+}
+
+function renderHistory(){
+  const repF=document.getElementById('hist-rep').value;
+  const statusF=document.getElementById('hist-status').value;
+  const touched=houses.filter(h=>h.status!=='fresh');
+  const reps=[...new Set(touched.map(h=>h.rep).filter(Boolean))];
+  const repSel=document.getElementById('hist-rep');
+  const cur=repSel.value;
+  repSel.innerHTML='<option value="">All reps</option>'+reps.map(r=>`<option value="${r}">${r}</option>`).join('');
+  if(cur)repSel.value=cur;
+  let filtered=touched.filter(h=>{
+    if(repF&&h.rep!==repF)return false;
+    if(statusF&&h.status!==statusF)return false;
+    return true;
+  }).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+  const el=document.getElementById('history-list');
+  if(!filtered.length){el.innerHTML='<div class="empty">No activity yet</div>';return;}
+  el.innerHTML=filtered.map(h=>`
+    <div class="door-log-item">
+      <div class="door-log-top">
+        <div class="dot" style="background:${SC[h.status]||'#888'}"></div>
+        <div class="door-log-addr">${h.addr}</div>
+        ${h.price?`<div class="door-log-price">$${h.price}</div>`:''}
+      </div>
+      <div class="door-log-meta">${SL[h.status]||h.status}${h.rep?' · '+h.rep:''}${h.updatedAt?' · '+h.updatedAt:''}</div>
+    </div>`).join('');
+}
+
+function renderTeam(){
+  const el=document.getElementById('team-list');
+  const reps={};
+  houses.filter(h=>h.status!=='fresh'&&h.rep).forEach(h=>{
+    if(!reps[h.rep])reps[h.rep]={visited:0,sold:0,revenue:0,noanswer:0};
+    reps[h.rep].visited++;
+    if(h.status==='sold'){reps[h.rep].sold++;reps[h.rep].revenue+=parseFloat(h.price)||0;}
+    if(h.status==='noanswer')reps[h.rep].noanswer++;
+  });
+  const names=Object.keys(reps);
+  if(!names.length){el.innerHTML='<div class="empty">No team data yet</div>';return;}
+  el.innerHTML=names.sort((a,b)=>reps[b].sold-reps[a].sold).map(name=>{
+    const r=reps[name];
+    const rate=r.visited>0?Math.round(r.sold/r.visited*100):0;
+    return`<div class="team-card">
+      <div class="team-top">${name}<span class="team-rate">${rate}% close</span></div>
+      <div class="team-grid">
+        <div><div class="team-num">${r.visited}</div><div class="team-lbl">visited</div></div>
+        <div><div class="team-num" style="color:var(--c-sold)">${r.sold}</div><div class="team-lbl">sold</div></div>
+        <div><div class="team-num">$${Math.round(r.revenue)}</div><div class="team-lbl">revenue</div></div>
+      </div>
+      ${r.noanswer>0?`<div style="margin-top:8px;font-size:11px;color:var(--c-noanswer);font-family:var(--mono)">${r.noanswer} no answer — follow up</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function updateTopStats(){
+  const active=houses.filter(h=>!streets.find(s=>s.id===h.streetId&&s.done));
+  const knocked=active.filter(h=>h.status!=='fresh');
+  const sold=active.filter(h=>h.status==='sold');
+  document.getElementById('ts-houses').textContent=active.length;
+  document.getElementById('ts-knocked').textContent=knocked.length;
+  document.getElementById('ts-sold').textContent=sold.length;
+  document.getElementById('ts-rev').textContent='$'+Math.round(sold.reduce((s,h)=>s+(parseFloat(h.price)||0),0));
+}
+
+function switchTab(tab){
+  activeTab=tab;
+  document.querySelectorAll('.sc').forEach(el=>el.classList.remove('active'));
+  document.getElementById('sc-'+tab).classList.add('active');
+  document.querySelectorAll('.stab').forEach((el,i)=>el.classList.toggle('active',['streets','history','team'][i]===tab));
+  if(tab==='history')renderHistory();
+  if(tab==='team')renderTeam();
+}
+
+load(); initMap();
+houses.forEach(h=>addHouseMarker(h));
+renderStreetList(); updateTopStats();
+</script>
+</body>
+</html>
